@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:jpa="http://www.springframework.org/schema/data/jpa" xmlns:mvc="http://www.springframework.org/schema/mvc"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xmlns:util="http://www.springframework.org/schema/util"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+    http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd
+    http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd
+    http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.0.xsd
+    http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd">
+    
+    
+    <!-- 自动扫描组件，包括@Controller,@Service,@Repository这里要把里面的 controller去除，他们已经在spring3-servlet.xml中配置了,也就是已经加入beanFactory，否则会影响注入 -->
+    <!-- 还发现了一个问题，就是如果不扫描@Repository，页面都进不去，报404,后来发现是这里的default-autowire和Javabean中@Autowire有冲突。。但最后还是要扫描@Repository，因为要给DAO注入sessionFactory -->
+    <context:component-scan base-package="com.lym">
+        <context:exclude-filter type="regex" expression="com.lym.controller" />
+    </context:component-scan>
+    
+    <!-- 配置数据库连接池及其属性  -->
+	<bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource" init-method="init" destroy-method="close">
+		<!-- 基本属性 url、user、password -->
+		<property name="driverClassName" value="com.mysql.jdbc.Driver" />
+		<property name="url"
+			value="jdbc:mysql://127.0.0.1:3306/test?useUnicode=true&amp;characterEncoding=UTF-8" />
+		<property name="username" value="root" />
+		<property name="password" value="root" />
+	
+		<!-- 配置监控统计拦截的filters -->
+		<property name="filters" value="stat" />
+	
+		<!-- 配置初始化大小、最小、最大 -->
+		<property name="maxActive" value="20" />
+		<property name="initialSize" value="1" />
+		<property name="minIdle" value="1" />
+	
+		<!-- 配置获取连接等待超时的时间 -->
+		<property name="maxWait" value="60000" />
+	
+		<!-- 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒 -->
+		<property name="timeBetweenEvictionRunsMillis" value="60000" />
+	
+		<!-- 配置一个连接在池中最小生存的时间，单位是毫秒 -->
+		<property name="minEvictableIdleTimeMillis" value="300000" />
+	
+		<property name="testWhileIdle" value="true" />
+		<property name="testOnBorrow" value="false" />
+		<property name="testOnReturn" value="false" />
+	
+		<!-- 打开PSCache，并且指定每个连接上PSCache的大小 -->
+		<property name="poolPreparedStatements" value="true" />
+		<property name="maxOpenPreparedStatements" value="20" />
+	</bean>
+    
+	<bean id="sessionFactory"
+        class="org.springframework.orm.hibernate5.LocalSessionFactoryBean">
+        <!-- 由于通过autowire启用了自动装载，所以下面的这个dataSource其实是可以不用写的 ，后面通过ref引用的都是一样的道理-->
+        <property name="dataSource" ref="dataSource" />
+        <!-- 这里直接映射的pojo类所在的包，简单方便不用每次加一个pojo类都需要到这里来添加 -->
+        <!-- hb4是使用mappingDirectoryLocations，hb5换成了packagesToScan -->
+        <!-- 
+        <property name="mappingDirectoryLocations">
+            <list>
+                <value>classpath:com/lym/entity</value>
+            </list>
+        </property>
+        -->
+        <property name="packagesToScan">
+            <list>
+                <value>com.lym.entity</value>
+            </list>
+        </property>
+        <property name="hibernateProperties">
+            <props>
+                <prop key="hibernate.dialect">
+                    org.hibernate.dialect.MySQLDialect
+                </prop>
+                <prop key="hibernate.show_sql">
+                    true
+                </prop>
+                <!-- <prop key="hibernate.connection.autocommit">true</prop> -->
+            </props>
+        </property>
+    </bean>
+    
+	<!-- 下面是配置声明式事务管理的，个人感觉比用注解管理事务要简单方便 -->
+	<bean id="txManager" class="org.springframework.orm.hibernate5.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"></property>
+    </bean>
+	<!-- 开启注解事务 只对当前配置文件有效 -->
+	<!-- 用配置文件的好处，是事务声明比较集中，不需要在每个Service层接口上单独声明。缺点是Service中的方法，命名规范需要事先约定好，否则事务就不能生效  -->
+    <!-- 用注解的好处，是Service中的方法命名不需要特别规定，缺点是没有做到集中声明，如果在某个Service层的接口忘记声明事务，那么事务就无法生效  -->
+    <tx:annotation-driven transaction-manager="txManager" />  
+    
+    
+    <!-- 开启AOP监听 只对当前配置文件有效 
+	<aop:aspectj-autoproxy expose-proxy="true"/>
+	-->
+	
+	<!-- 配置AOP通知 -->
+    <!-- <tx:advice id="txAdvice" transaction-manager="txManager"> -->
+         <!-- 配置事务属性 -->
+         <!-- <tx:attributes> -->
+             <!-- 添加事务管理的方法 -->
+             <!-- Service类中以get*,query*等等开头的查询操作只能执行只读事务；对于所有的事务，如果出现异常就回滚 -->
+             <!-- 
+             <tx:method name="save*" propagation="REQUIRED"/>
+             <tx:method name="delete*" propagation="REQUIRED"/>
+             <tx:method name="update*" propagation="REQUIRED"/>
+             <tx:method name="get*" read-only="true"/>
+             <tx:method name="query*" read-only="true"/>
+             <tx:method name="find*" read-only="true"/>
+             <tx:method name="load*" read-only="true"/>
+             <tx:method name="*" rollback-for="Exception" />
+             -->
+         <!-- </tx:attributes> -->
+     <!-- </tx:advice> -->
+     
+    <!-- 配置AOP，为添加事务管理的操作配置AOP -->
+	<!-- <aop:config> -->
+    <!-- advisor包含一个切点和一个通知，而aspect包含多个 -->
+        <!-- <aop:advisor advice-ref="txAdvice" pointcut="execution(* com.lym.service.*.*(..))" /> -->
+    <!-- </aop:config> -->
+    
+</beans>
